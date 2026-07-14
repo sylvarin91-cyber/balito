@@ -1,36 +1,81 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Balito - Shift Handover Tool
 
-## Getting Started
+A simple shift handover tool for small factories, workshops, and 24/7 operations. Log status, flag issues, and hand over to the next shift.
 
-First, run the development server:
+## Features
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+- **Shift Tracking** - Clock in/out with automatic timestamps
+- **Handover Notes** - Log what happened during your shift
+- **Issue Flags** - Mark urgent issues that need attention
+- **Team Access** - Everyone sees the same information
+
+## Tech Stack
+
+- **Frontend:** Next.js 14 (App Router)
+- **Database:** Supabase (PostgreSQL)
+- **Auth:** Supabase Auth
+- **Styling:** Tailwind CSS
+
+## Setup
+
+### 1. Create Supabase Project
+
+1. Go to [supabase.com](https://supabase.com) and create a free account
+2. Click "New Project" and give it a name
+3. Note your **Project URL** and **Anon Key** from Settings > API
+
+### 2. Set Up Database
+
+1. In your Supabase dashboard, go to SQL Editor
+2. Copy and paste the contents of `supabase/schema.sql`
+3. Click "Run" to create all tables and policies
+
+### 3. Configure Environment
+
+1. Copy `.env.local.example` to `.env.local`
+2. Add your Supabase URL and Anon Key:
+
+```
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key-here
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### 4. Run Development Server
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+npm install
+npm run dev
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Visit [http://localhost:3000](http://localhost:3000)
 
-## Learn More
+## Deployment
 
-To learn more about Next.js, take a look at the following resources:
+### Vercel (Recommended)
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+1. Push your code to GitHub
+2. Go to [vercel.com](https://vercel.com)
+3. Import your repository
+4. Add environment variables
+5. Deploy
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Database Schema
 
-## Deploy on Vercel
+- **teams** - Workspaces for teams
+- **team_members** - Users belonging to teams
+- **shifts** - Individual shift records
+- **handovers** - Notes and issue flags for each shift
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Monetization Ideas
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- **Freemium:** Free for small teams, paid for advanced features
+- **Per-user pricing:** $8-15/month per team member
+- **Lifetime deals:** One-time payment for early adopters
+
+## Next Steps
+
+- [ ] Add email notifications for urgent flags
+- [ ] Create team invite system
+- [ ] Add shift scheduling calendar
+- [ ] Build mobile app
+- [ ] Add reporting and analytics
