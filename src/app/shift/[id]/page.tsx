@@ -8,9 +8,13 @@ import Link from "next/link";
 interface Shift {
   id: string;
   team_id: string;
+  user_id: string | null;
+  shift_name: string | null;
+  shift_date: string | null;
+  schedule_id: string | null;
   started_at: string;
   ended_at: string | null;
-  status: "active" | "completed";
+  status: "active" | "completed" | "scheduled";
 }
 
 interface Handover {
@@ -186,6 +190,14 @@ export default function ShiftPage() {
           </div>
 
           <div className="grid grid-cols-2 gap-4 text-sm">
+            <div>
+              <span className="text-slate-500">Worker:</span>
+              <p className="text-slate-900">{shift?.user_id}</p>
+            </div>
+            <div>
+              <span className="text-slate-500">Shift Name:</span>
+              <p className="text-slate-900">{shift?.shift_name || "-"}</p>
+            </div>
             <div>
               <span className="text-slate-500">Started:</span>
               <p className="text-slate-900">

@@ -29,12 +29,23 @@ export default function HistoryPage() {
       }
       setUser(user);
 
-      // Load all shifts for this user
-      const { data: shiftsData } = await supabase
-        .from("shifts")
-        .select("*")
-        .eq("user_id", user.id)
-        .order("started_at", { ascending: false });
+      // Load all shifts for user's teams
+      const { data: teamMembers } = await supabase
+        .from("team_members")
+        .select("team_id")
+        .eq("user_id", user.id);
+
+      const teamIds = (teamMembers || []).map((tm) => tm.team_id);
+
+      let shiftsData = null;
+      if (teamIds.length > 0) {
+        const result = await supabase
+          .from("shifts")
+          .select("*")
+          .in("team_id", teamIds)
+          .order("started_at", { ascending: false });
+        shiftsData = result.data;
+      }
 
       setShifts(shiftsData || []);
       setLoading(false);
