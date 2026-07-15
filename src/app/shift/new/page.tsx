@@ -29,13 +29,51 @@ export default function NewShiftPage() {
   const handleStartShift = async () => {
     setCreating(true);
 
-    // For MVP, we'll use a default team. In production, users would select/create a team.
-    const defaultTeamId = "00000000-0000-0000-0000-000000000001";
+    // Check if user has a team, if not create one
+    const { data: memberRows } = await supabase
+      .from("team_members")
+      .select("team_id")
+      .eq("user_id", user.id)
+      .limit(1);
+
+    let teamId: string;
+
+    if (memberRows && memberRows.length > 0) {
+      teamId = memberRows[0].team_id;
+    } else {
+      // Create a new team
+      const { data: team, error: teamError } = await supabase
+        .from("teams")
+        .insert({ name: `${user.email}'s Team` })
+        .select()
+        .single();
+
+      if (teamError || !team) {
+        console.error("Error creating team:", teamError);
+        alert("Failed to create team. Please try again.");
+        setCreating(false);
+        return;
+      }
+
+      // Add user as admin
+      const { error: memberError } = await supabase
+        .from("team_members")
+        .insert({ team_id: team.id, user_id: user.id, role: "admin" });
+
+      if (memberError) {
+        console.error("Error adding team member:", memberError);
+        alert("Failed to create team. Please try again.");
+        setCreating(false);
+        return;
+      }
+
+      teamId = team.id;
+    }
 
     const { data, error } = await supabase
       .from("shifts")
       .insert({
-        team_id: defaultTeamId,
+        team_id: teamId,
         user_id: user.id,
         status: "active",
       })
