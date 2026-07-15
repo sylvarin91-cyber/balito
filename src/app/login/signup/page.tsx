@@ -4,21 +4,22 @@ import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
 
-export default function LoginPage() {
+export default function SignUpPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [magicLinkSent, setMagicLinkSent] = useState(false);
+  const [success, setSuccess] = useState(false);
   const supabase = createClient();
 
-  const handleMagicLink = async (e: React.FormEvent) => {
+  const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError("");
 
-    const { error } = await supabase.auth.signInWithOtp({
+    const { error } = await supabase.auth.signUp({
       email,
+      password,
       options: {
         emailRedirectTo: `${window.location.origin}/dashboard`,
       },
@@ -27,30 +28,12 @@ export default function LoginPage() {
     if (error) {
       setError(error.message);
     } else {
-      setMagicLinkSent(true);
+      setSuccess(true);
     }
     setLoading(false);
   };
 
-  const handleEmailPassword = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setError("");
-
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-
-    if (error) {
-      setError(error.message);
-    } else {
-      window.location.href = "/dashboard";
-    }
-    setLoading(false);
-  };
-
-  if (magicLinkSent) {
+  if (success) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
         <div className="max-w-md w-full bg-white rounded-xl shadow-lg p-8 text-center">
@@ -59,14 +42,14 @@ export default function LoginPage() {
           </div>
           <h1 className="text-2xl font-bold text-slate-900 mb-2">Check your email</h1>
           <p className="text-slate-600">
-            We sent a magic link to <strong>{email}</strong>. Click the link to sign in.
+            We sent a confirmation link to <strong>{email}</strong>. Click it to activate your account.
           </p>
-          <button
-            onClick={() => setMagicLinkSent(false)}
-            className="mt-6 text-blue-600 hover:text-blue-700 font-medium"
+          <Link
+            href="/login"
+            className="mt-6 inline-block text-blue-600 hover:text-blue-700 font-medium"
           >
-            Try another email
-          </button>
+            Back to sign in
+          </Link>
         </div>
       </div>
     );
@@ -82,7 +65,7 @@ export default function LoginPage() {
             </div>
             <span className="text-xl font-bold text-slate-900">Balito</span>
           </Link>
-          <h1 className="text-2xl font-bold text-slate-900">Sign in to your account</h1>
+          <h1 className="text-2xl font-bold text-slate-900">Create your account</h1>
           <p className="text-slate-600 mt-1">Start managing your shift handovers</p>
         </div>
 
@@ -92,8 +75,7 @@ export default function LoginPage() {
           </div>
         )}
 
-        {/* Magic Link */}
-        <form onSubmit={handleMagicLink} className="mb-6">
+        <form onSubmit={handleSignUp}>
           <label className="block text-sm font-medium text-slate-700 mb-2">
             Email address
           </label>
@@ -105,27 +87,7 @@ export default function LoginPage() {
             required
             className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
           />
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full mt-3 bg-blue-600 text-white py-3 rounded-lg font-medium hover:bg-blue-700 transition-colors disabled:opacity-50"
-          >
-            {loading ? "Sending..." : "Send Magic Link"}
-          </button>
-        </form>
-
-        <div className="relative mb-6">
-          <div className="absolute inset-0 flex items-center">
-            <div className="w-full border-t border-slate-200"></div>
-          </div>
-          <div className="relative flex justify-center text-sm">
-            <span className="bg-white px-4 text-slate-500">or</span>
-          </div>
-        </div>
-
-        {/* Email + Password */}
-        <form onSubmit={handleEmailPassword}>
-          <label className="block text-sm font-medium text-slate-700 mb-2">
+          <label className="block text-sm font-medium text-slate-700 mb-2 mt-4">
             Password
           </label>
           <input
@@ -133,21 +95,23 @@ export default function LoginPage() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="••••••••"
+            required
+            minLength={6}
             className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none mb-4"
           />
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-slate-900 text-white py-3 rounded-lg font-medium hover:bg-slate-800 transition-colors disabled:opacity-50"
+            className="w-full bg-blue-600 text-white py-3 rounded-lg font-medium hover:bg-blue-700 transition-colors disabled:opacity-50"
           >
-            {loading ? "Signing in..." : "Sign in with Password"}
+            {loading ? "Creating account..." : "Sign Up"}
           </button>
         </form>
 
         <p className="text-center text-sm text-slate-600 mt-6">
-          Don&apos;t have an account?{" "}
-          <Link href="/login/signup" className="text-blue-600 hover:text-blue-700 font-medium">
-            Sign up
+          Already have an account?{" "}
+          <Link href="/login" className="text-blue-600 hover:text-blue-700 font-medium">
+            Sign in
           </Link>
         </p>
       </div>
