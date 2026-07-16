@@ -34,6 +34,14 @@ export default function NewOrgPage() {
     setCreating(true);
     setError("");
 
+    // Verify auth
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      setError("Not logged in. Please sign in first.");
+      setCreating(false);
+      return;
+    }
+
     // Create organization
     const { data: org, error: orgError } = await supabase
       .from("organizations")
@@ -42,8 +50,8 @@ export default function NewOrgPage() {
       .single();
 
     if (orgError || !org) {
-      console.error("Error creating org:", orgError);
-      setError("Failed to create organization. Please try again.");
+      console.error("Error creating org:", JSON.stringify(orgError));
+      setError(`Failed: ${orgError?.message || "Unknown error"}`);
       setCreating(false);
       return;
     }
@@ -54,8 +62,8 @@ export default function NewOrgPage() {
       .insert({ org_id: org.id, user_id: user.id, role: "owner" });
 
     if (memberError) {
-      console.error("Error adding owner:", memberError);
-      setError("Failed to set up organization. Please try again.");
+      console.error("Error adding owner:", JSON.stringify(memberError));
+      setError(`Failed to add owner: ${memberError?.message || "Unknown error"}`);
       setCreating(false);
       return;
     }

@@ -1,366 +1,253 @@
--- Balito Shift Handover Tool - Database Migration
--- Run this in your Supabase SQL Editor
--- Safe to run multiple times (uses IF NOT EXISTS / IF EXISTS)
+-- Balito - Full Database Reset
+-- Run this in Supabase SQL Editor. Drops everything and recreates.
 
--- Enable UUID extension
-create extension if not exists "uuid-ossp";
+-- DROP ALL POLICIES
+DO $$ DECLARE r RECORD; BEGIN
+  FOR r IN (SELECT policyname, tablename FROM pg_policies WHERE schemaname = 'public') LOOP
+    EXECUTE 'DROP POLICY IF EXISTS "' || r.policyname || '" ON ' || r.tablename;
+  END LOOP;
+END $$;
 
--- ============================================================
--- 1. NEW TABLES (only created if they don't exist)
--- ============================================================
+-- DROP ALL TABLES
+DROP TABLE IF EXISTS handovers CASCADE;
+DROP TABLE IF EXISTS shifts CASCADE;
+DROP TABLE IF EXISTS shift_schedules CASCADE;
+DROP TABLE IF EXISTS team_invites CASCADE;
+DROP TABLE IF EXISTS team_members CASCADE;
+DROP TABLE IF EXISTS teams CASCADE;
+DROP TABLE IF EXISTS org_members CASCADE;
+DROP TABLE IF EXISTS organizations CASCADE;
 
--- Organizations (flexible hierarchy via parent_id)
-create table if not exists organizations (
-  id uuid primary key default uuid_generate_v4(),
-  name text not null,
-  parent_id uuid references organizations(id) on delete set null,
-  created_by uuid references auth.users(id) on delete set null,
-  created_at timestamptz default now()
+-- CREATE TABLES
+
+CREATE TABLE organizations (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  name text NOT NULL,
+  parent_id uuid REFERENCES organizations(id) ON DELETE SET NULL,
+  created_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at timestamptz DEFAULT now()
 );
 
--- Org members
-create table if not exists org_members (
-  id uuid primary key default uuid_generate_v4(),
-  org_id uuid references organizations(id) on delete cascade,
-  user_id uuid references auth.users(id) on delete cascade,
-  role text default 'member' check (role in ('owner', 'admin', 'member')),
-  created_at timestamptz default now(),
-  unique(org_id, user_id)
+CREATE TABLE org_members (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id uuid REFERENCES organizations(id) ON DELETE CASCADE,
+  user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE,
+  role text DEFAULT 'member' CHECK (role IN ('owner', 'admin', 'member')),
+  created_at timestamptz DEFAULT now(),
+  UNIQUE(org_id, user_id)
 );
 
--- Team invites
-create table if not exists team_invites (
-  id uuid primary key default uuid_generate_v4(),
-  team_id uuid references teams(id) on delete cascade,
-  email text not null,
-  invited_by uuid references auth.users(id) on delete set null,
-  code text unique not null,
-  expires_at timestamptz not null,
+CREATE TABLE teams (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  name text NOT NULL,
+  org_id uuid REFERENCES organizations(id) ON DELETE SET NULL,
+  created_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  join_code text,
+  created_at timestamptz DEFAULT now()
+);
+
+CREATE TABLE team_members (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  team_id uuid REFERENCES teams(id) ON DELETE CASCADE,
+  user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE,
+  role text DEFAULT 'member' CHECK (role IN ('admin', 'member')),
+  created_at timestamptz DEFAULT now(),
+  UNIQUE(team_id, user_id)
+);
+
+CREATE TABLE team_invites (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  team_id uuid REFERENCES teams(id) ON DELETE CASCADE,
+  email text NOT NULL,
+  invited_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  code text UNIQUE NOT NULL,
+  expires_at timestamptz NOT NULL,
   accepted_at timestamptz,
-  created_at timestamptz default now()
+  created_at timestamptz DEFAULT now()
 );
 
--- Shift schedules (templates)
-create table if not exists shift_schedules (
-  id uuid primary key default uuid_generate_v4(),
-  team_id uuid references teams(id) on delete cascade,
-  shift_name text not null,
-  start_hour int not null check (start_hour >= 0 and start_hour < 24),
-  start_minute int not null default 0 check (start_minute >= 0 and start_minute < 60),
-  end_hour int not null check (end_hour >= 0 and end_hour < 24),
-  end_minute int not null default 0 check (end_minute >= 0 and end_minute < 60),
-  days_of_week int[] not null default '{0,1,2,3,4,5,6}',
-  created_by uuid references auth.users(id) on delete set null,
-  created_at timestamptz default now()
+CREATE TABLE shift_schedules (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  team_id uuid REFERENCES teams(id) ON DELETE CASCADE,
+  shift_name text NOT NULL,
+  start_hour int NOT NULL CHECK (start_hour >= 0 AND start_hour < 24),
+  start_minute int NOT NULL DEFAULT 0 CHECK (start_minute >= 0 AND start_minute < 60),
+  end_hour int NOT NULL CHECK (end_hour >= 0 AND end_hour < 24),
+  end_minute int NOT NULL DEFAULT 0 CHECK (end_minute >= 0 AND end_minute < 60),
+  days_of_week int[] NOT NULL DEFAULT '{0,1,2,3,4,5,6}',
+  created_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at timestamptz DEFAULT now()
 );
 
--- ============================================================
--- 2. ADD COLUMNS TO EXISTING TABLES (safe with IF NOT EXISTS)
--- ============================================================
+CREATE TABLE shifts (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  team_id uuid REFERENCES teams(id) ON DELETE CASCADE,
+  user_id uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  schedule_id uuid REFERENCES shift_schedules(id) ON DELETE SET NULL,
+  started_at timestamptz DEFAULT now(),
+  ended_at timestamptz,
+  status text DEFAULT 'active' CHECK (status IN ('active', 'completed', 'scheduled')),
+  shift_date date,
+  shift_name text
+);
 
--- Teams: add org_id, created_by, join_code
-DO $$ BEGIN
-  ALTER TABLE teams ADD COLUMN IF NOT EXISTS org_id uuid REFERENCES organizations(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_column THEN NULL;
-END $$;
+CREATE TABLE handovers (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  shift_id uuid REFERENCES shifts(id) ON DELETE CASCADE,
+  content text NOT NULL,
+  priority text DEFAULT 'normal' CHECK (priority IN ('urgent', 'normal', 'resolved')),
+  created_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at timestamptz DEFAULT now()
+);
 
-DO $$ BEGIN
-  ALTER TABLE teams ADD COLUMN IF NOT EXISTS created_by uuid REFERENCES auth.users(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_column THEN NULL;
-END $$;
+-- INDEXES
 
-DO $$ BEGIN
-  ALTER TABLE teams ADD COLUMN IF NOT EXISTS join_code text;
-EXCEPTION WHEN duplicate_column THEN NULL;
-END $$;
+CREATE INDEX idx_organizations_parent_id ON organizations(parent_id);
+CREATE INDEX idx_organizations_created_by ON organizations(created_by);
+CREATE INDEX idx_org_members_org_id ON org_members(org_id);
+CREATE INDEX idx_org_members_user_id ON org_members(user_id);
+CREATE INDEX idx_teams_org_id ON teams(org_id);
+CREATE INDEX idx_teams_join_code ON teams(join_code);
+CREATE INDEX idx_team_members_user_id ON team_members(user_id);
+CREATE INDEX idx_team_members_team_id ON team_members(team_id);
+CREATE INDEX idx_shifts_user_id ON shifts(user_id);
+CREATE INDEX idx_shifts_team_id ON shifts(team_id);
+CREATE INDEX idx_shifts_status ON shifts(status);
+CREATE INDEX idx_shifts_shift_date ON shifts(shift_date);
+CREATE INDEX idx_handovers_shift_id ON handovers(shift_id);
 
--- Make existing teams columns nullable if needed (for backward compat)
-DO $$ BEGIN
-  ALTER TABLE teams ALTER COLUMN name DROP NOT NULL;
-EXCEPTION WHEN undefined_column THEN NULL; WHEN others THEN NULL;
-END $$;
+-- ENABLE RLS
 
--- Shifts: add schedule_id, shift_date, shift_name
-DO $$ BEGIN
-  ALTER TABLE shifts ADD COLUMN IF NOT EXISTS schedule_id uuid REFERENCES shift_schedules(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_column THEN NULL;
-END $$;
+ALTER TABLE organizations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE org_members ENABLE ROW LEVEL SECURITY;
+ALTER TABLE teams ENABLE ROW LEVEL SECURITY;
+ALTER TABLE team_members ENABLE ROW LEVEL SECURITY;
+ALTER TABLE team_invites ENABLE ROW LEVEL SECURITY;
+ALTER TABLE shift_schedules ENABLE ROW LEVEL SECURITY;
+ALTER TABLE shifts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE handovers ENABLE ROW LEVEL SECURITY;
 
-DO $$ BEGIN
-  ALTER TABLE shifts ADD COLUMN IF NOT EXISTS shift_date date;
-EXCEPTION WHEN duplicate_column THEN NULL;
-END $$;
+-- POLICIES: Organizations
 
-DO $$ BEGIN
-  ALTER TABLE shifts ADD COLUMN IF NOT EXISTS shift_name text;
-EXCEPTION WHEN duplicate_column THEN NULL;
-END $$;
+CREATE POLICY "org_insert" ON organizations
+  FOR INSERT WITH CHECK (auth.uid() IS NOT NULL);
 
--- Update shifts status check to include 'scheduled'
-DO $$ BEGIN
-  ALTER TABLE shifts DROP CONSTRAINT IF EXISTS shifts_status_check;
-  ALTER TABLE shifts ADD CONSTRAINT shifts_status_check CHECK (status IN ('active', 'completed', 'scheduled'));
-EXCEPTION WHEN others THEN NULL;
-END $$;
-
--- Handovers: add created_by
-DO $$ BEGIN
-  ALTER TABLE handovers ADD COLUMN IF NOT EXISTS created_by uuid REFERENCES auth.users(id) ON DELETE SET NULL;
-EXCEPTION WHEN duplicate_column THEN NULL;
-END $$;
-
--- ============================================================
--- 3. INDEXES (only created if they don't exist)
--- ============================================================
-
-create index if not exists idx_organizations_parent_id on organizations(parent_id);
-create index if not exists idx_organizations_created_by on organizations(created_by);
-create index if not exists idx_org_members_org_id on org_members(org_id);
-create index if not exists idx_org_members_user_id on org_members(user_id);
-create index if not exists idx_teams_org_id on teams(org_id);
-create index if not exists idx_teams_created_by on teams(created_by);
-create index if not exists idx_teams_join_code on teams(join_code);
-create index if not exists idx_team_invites_team_id on team_invites(team_id);
-create index if not exists idx_team_invites_code on team_invites(code);
-create index if not exists idx_team_invites_email on team_invites(email);
-create index if not exists idx_shift_schedules_team_id on shift_schedules(team_id);
-create index if not exists idx_shifts_user_id on shifts(user_id);
-create index if not exists idx_shifts_team_id on shifts(team_id);
-create index if not exists idx_shifts_status on shifts(status);
-create index if not exists idx_shifts_shift_date on shifts(shift_date);
-create index if not exists idx_handovers_shift_id on handovers(shift_id);
-create index if not exists idx_team_members_user_id on team_members(user_id);
-create index if not exists idx_team_members_team_id on team_members(team_id);
-
--- ============================================================
--- 4. ENABLE ROW LEVEL SECURITY
--- ============================================================
-
-alter table organizations enable row level security;
-alter table org_members enable row level security;
-alter table teams enable row level security;
-alter table team_members enable row level security;
-alter table team_invites enable row level security;
-alter table shift_schedules enable row level security;
-alter table shifts enable row level security;
-alter table handovers enable row level security;
-
--- ============================================================
--- 5. DROP OLD POLICIES (if they exist) THEN CREATE NEW ONES
--- ============================================================
-
--- Organizations
-drop policy if exists "Users can view their organizations" on organizations;
-drop policy if exists "Authenticated users can create organizations" on organizations;
-drop policy if exists "Org owners and admins can update" on organizations;
-
-create policy "Users can view their organizations" on organizations
-  for select using (
-    id in (
-      select org_id from org_members where user_id = auth.uid()
-    )
+CREATE POLICY "org_select" ON organizations
+  FOR SELECT USING (
+    id IN (SELECT org_id FROM org_members WHERE user_id = auth.uid())
   );
 
-create policy "Authenticated users can create organizations" on organizations
-  for insert with check (auth.uid() is not null);
-
-create policy "Org owners and admins can update" on organizations
-  for update using (
-    id in (
-      select org_id from org_members where user_id = auth.uid() and role in ('owner', 'admin')
-    )
+CREATE POLICY "org_update" ON organizations
+  FOR UPDATE USING (
+    id IN (SELECT org_id FROM org_members WHERE user_id = auth.uid() AND role IN ('owner','admin'))
   );
 
--- Org members
-drop policy if exists "Users can view org members" on org_members;
-drop policy if exists "Org owners and admins can add members" on org_members;
-drop policy if exists "Org owners can remove members" on org_members;
+-- POLICIES: Org members
 
-create policy "Users can view org members" on org_members
-  for select using (
-    org_id in (
-      select org_id from org_members where user_id = auth.uid()
-    )
+CREATE POLICY "org_members_select" ON org_members
+  FOR SELECT USING (
+    org_id IN (SELECT org_id FROM org_members WHERE user_id = auth.uid())
   );
 
-create policy "Org owners and admins can add members" on org_members
-  for insert with check (
-    org_id in (
-      select org_id from org_members where user_id = auth.uid() and role in ('owner', 'admin')
-    )
+CREATE POLICY "org_members_insert" ON org_members
+  FOR INSERT WITH CHECK (
+    org_id IN (SELECT org_id FROM org_members WHERE user_id = auth.uid() AND role IN ('owner','admin'))
   );
 
-create policy "Org owners can remove members" on org_members
-  for delete using (
-    org_id in (
-      select org_id from org_members where user_id = auth.uid() and role = 'owner'
-    )
+CREATE POLICY "org_members_delete" ON org_members
+  FOR DELETE USING (
+    org_id IN (SELECT org_id FROM org_members WHERE user_id = auth.uid() AND role = 'owner')
   );
 
--- Teams (drop old policies first)
-drop policy if exists "Users can view their teams" on teams;
-drop policy if exists "Users can view org teams" on teams;
-drop policy if exists "Org admins can create teams" on teams;
-drop policy if exists "Team admins can update team" on teams;
+-- POLICIES: Teams
 
-create policy "Users can view org teams" on teams
-  for select using (
-    org_id in (
-      select org_id from org_members where user_id = auth.uid()
-    )
-    or
-    id in (
-      select team_id from team_members where user_id = auth.uid()
-    )
+CREATE POLICY "teams_select" ON teams
+  FOR SELECT USING (
+    org_id IN (SELECT org_id FROM org_members WHERE user_id = auth.uid())
+    OR id IN (SELECT team_id FROM team_members WHERE user_id = auth.uid())
   );
 
-create policy "Org admins can create teams" on teams
-  for insert with check (
-    org_id in (
-      select org_id from org_members where user_id = auth.uid() and role in ('owner', 'admin')
-    )
+CREATE POLICY "teams_insert" ON teams
+  FOR INSERT WITH CHECK (
+    org_id IN (SELECT org_id FROM org_members WHERE user_id = auth.uid() AND role IN ('owner','admin'))
   );
 
-create policy "Team admins can update team" on teams
-  for update using (
-    id in (
-      select team_id from team_members where user_id = auth.uid() and role = 'admin'
-    )
+CREATE POLICY "teams_update" ON teams
+  FOR UPDATE USING (
+    id IN (SELECT team_id FROM team_members WHERE user_id = auth.uid() AND role = 'admin')
   );
 
--- Team members (drop old policies first)
-drop policy if exists "Users can view team members" on team_members;
-drop policy if exists "Team admins can add members" on team_members;
-drop policy if exists "Team admins can remove members" on team_members;
+-- POLICIES: Team members
 
-create policy "Users can view team members" on team_members
-  for select using (
-    team_id in (
-      select team_id from team_members where user_id = auth.uid()
-    )
-    or
-    team_id in (
-      select id from teams where org_id in (
-        select org_id from org_members where user_id = auth.uid() and role in ('owner', 'admin')
-      )
-    )
+CREATE POLICY "tm_select" ON team_members
+  FOR SELECT USING (
+    team_id IN (SELECT team_id FROM team_members WHERE user_id = auth.uid())
+    OR team_id IN (SELECT id FROM teams WHERE org_id IN (SELECT org_id FROM org_members WHERE user_id = auth.uid() AND role IN ('owner','admin')))
   );
 
-create policy "Team admins can add members" on team_members
-  for insert with check (
-    team_id in (
-      select team_id from team_members where user_id = auth.uid() and role = 'admin'
-    )
-    or
-    team_id in (
-      select id from teams where org_id in (
-        select org_id from org_members where user_id = auth.uid() and role in ('owner', 'admin')
-      )
-    )
+CREATE POLICY "tm_insert" ON team_members
+  FOR INSERT WITH CHECK (
+    team_id IN (SELECT team_id FROM team_members WHERE user_id = auth.uid() AND role = 'admin')
+    OR team_id IN (SELECT id FROM teams WHERE org_id IN (SELECT org_id FROM org_members WHERE user_id = auth.uid() AND role IN ('owner','admin')))
   );
 
-create policy "Team admins can remove members" on team_members
-  for delete using (
-    team_id in (
-      select team_id from team_members where user_id = auth.uid() and role = 'admin'
-    )
-    or
-    team_id in (
-      select id from teams where org_id in (
-        select org_id from org_members where user_id = auth.uid() and role in ('owner', 'admin')
-      )
-    )
+CREATE POLICY "tm_delete" ON team_members
+  FOR DELETE USING (
+    team_id IN (SELECT team_id FROM team_members WHERE user_id = auth.uid() AND role = 'admin')
+    OR team_id IN (SELECT id FROM teams WHERE org_id IN (SELECT org_id FROM org_members WHERE user_id = auth.uid() AND role IN ('owner','admin')))
   );
 
--- Team invites
-drop policy if exists "Team admins can manage invites" on team_invites;
-drop policy if exists "Anyone can read invite by code" on team_invites;
+-- POLICIES: Team invites
 
-create policy "Team admins can manage invites" on team_invites
-  for all using (
-    team_id in (
-      select team_id from team_members where user_id = auth.uid() and role = 'admin'
-    )
-    or
-    team_id in (
-      select id from teams where org_id in (
-        select org_id from org_members where user_id = auth.uid() and role in ('owner', 'admin')
-      )
-    )
+CREATE POLICY "ti_manage" ON team_invites
+  FOR ALL USING (
+    team_id IN (SELECT team_id FROM team_members WHERE user_id = auth.uid() AND role = 'admin')
+    OR team_id IN (SELECT id FROM teams WHERE org_id IN (SELECT org_id FROM org_members WHERE user_id = auth.uid() AND role IN ('owner','admin')))
   );
 
-create policy "Anyone can read invite by code" on team_invites
-  for select using (true);
+CREATE POLICY "ti_read" ON team_invites
+  FOR SELECT USING (true);
 
--- Shift schedules
-drop policy if exists "Team members can view schedules" on shift_schedules;
-drop policy if exists "Team admins can manage schedules" on shift_schedules;
+-- POLICIES: Shift schedules
 
-create policy "Team members can view schedules" on shift_schedules
-  for select using (
-    team_id in (
-      select team_id from team_members where user_id = auth.uid()
-    )
+CREATE POLICY "ss_select" ON shift_schedules
+  FOR SELECT USING (
+    team_id IN (SELECT team_id FROM team_members WHERE user_id = auth.uid())
   );
 
-create policy "Team admins can manage schedules" on shift_schedules
-  for all using (
-    team_id in (
-      select team_id from team_members where user_id = auth.uid() and role = 'admin'
-    )
+CREATE POLICY "ss_manage" ON shift_schedules
+  FOR ALL USING (
+    team_id IN (SELECT team_id FROM team_members WHERE user_id = auth.uid() AND role = 'admin')
   );
 
--- Shifts (drop old policies first)
-drop policy if exists "Users can view team shifts" on shifts;
-drop policy if exists "Users can create shifts" on shifts;
-drop policy if exists "Team admins can manage shifts" on shifts;
-drop policy if exists "Users can update own shifts" on shifts;
+-- POLICIES: Shifts
 
-create policy "Users can view team shifts" on shifts
-  for select using (
-    team_id in (
-      select team_id from team_members where user_id = auth.uid()
-    )
+CREATE POLICY "shifts_select" ON shifts
+  FOR SELECT USING (
+    team_id IN (SELECT team_id FROM team_members WHERE user_id = auth.uid())
   );
 
-create policy "Team admins can manage shifts" on shifts
-  for all using (
-    team_id in (
-      select team_id from team_members where user_id = auth.uid() and role = 'admin'
-    )
+CREATE POLICY "shifts_manage" ON shifts
+  FOR ALL USING (
+    team_id IN (SELECT team_id FROM team_members WHERE user_id = auth.uid() AND role = 'admin')
   );
 
-create policy "Users can update own shifts" on shifts
-  for update using (user_id = auth.uid());
+CREATE POLICY "shifts_update_own" ON shifts
+  FOR UPDATE USING (user_id = auth.uid());
 
--- Handovers (drop old policies first)
-drop policy if exists "Users can view team handovers" on handovers;
-drop policy if exists "Users can create handovers" on handovers;
-drop policy if exists "Users can update team handovers" on handovers;
+-- POLICIES: Handovers
 
-create policy "Users can view team handovers" on handovers
-  for select using (
-    shift_id in (
-      select id from shifts where team_id in (
-        select team_id from team_members where user_id = auth.uid()
-      )
-    )
+CREATE POLICY "handovers_select" ON handovers
+  FOR SELECT USING (
+    shift_id IN (SELECT id FROM shifts WHERE team_id IN (SELECT team_id FROM team_members WHERE user_id = auth.uid()))
   );
 
-create policy "Users can create handovers" on handovers
-  for insert with check (
-    shift_id in (
-      select id from shifts where team_id in (
-        select team_id from team_members where user_id = auth.uid()
-      )
-    )
+CREATE POLICY "handovers_insert" ON handovers
+  FOR INSERT WITH CHECK (
+    shift_id IN (SELECT id FROM shifts WHERE team_id IN (SELECT team_id FROM team_members WHERE user_id = auth.uid()))
   );
 
-create policy "Users can update team handovers" on handovers
-  for update using (
-    shift_id in (
-      select id from shifts where team_id in (
-        select team_id from team_members where user_id = auth.uid()
-      )
-    )
+CREATE POLICY "handovers_update" ON handovers
+  FOR UPDATE USING (
+    shift_id IN (SELECT id FROM shifts WHERE team_id IN (SELECT team_id FROM team_members WHERE user_id = auth.uid()))
   );
