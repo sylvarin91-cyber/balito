@@ -74,6 +74,22 @@ export default function JoinPage() {
       return;
     }
 
+    // Also add user to the org if team has one (prevents orphaned member lockout)
+    if (team.org_id) {
+      const { data: existingOrgMember } = await supabase
+        .from("org_members")
+        .select("id")
+        .eq("org_id", team.org_id)
+        .eq("user_id", user.id)
+        .single();
+
+      if (!existingOrgMember) {
+        await supabase
+          .from("org_members")
+          .insert({ org_id: team.org_id, user_id: user.id, role: "member" });
+      }
+    }
+
     setSuccess(true);
     setJoining(false);
 

@@ -73,7 +73,8 @@ create table shifts (
   ended_at timestamptz,
   status text default 'active' check (status in ('active', 'completed', 'scheduled')),
   shift_date date,
-  shift_name text
+  shift_name text,
+  check (ended_at is null or ended_at > started_at)
 );
 
 create table handovers (
@@ -128,8 +129,12 @@ create policy "org_select" on organizations
   );
 
 -- ORG_MEMBERS
+-- Can see all members of orgs you created (queries organizations, not org_members)
 create policy "org_members_select" on org_members
-  for select using (user_id = auth.uid());
+  for select using (
+    user_id = auth.uid()
+    or org_id in (select id from organizations where created_by = auth.uid())
+  );
 
 create policy "org_members_insert" on org_members
   for insert with check (user_id = auth.uid());
@@ -155,8 +160,12 @@ create policy "teams_update" on teams
   );
 
 -- TEAM_MEMBERS
+-- Can see all members of teams you created (queries teams, not team_members)
 create policy "tm_select" on team_members
-  for select using (user_id = auth.uid());
+  for select using (
+    user_id = auth.uid()
+    or team_id in (select id from teams where created_by = auth.uid())
+  );
 
 create policy "tm_insert" on team_members
   for insert with check (user_id = auth.uid());
