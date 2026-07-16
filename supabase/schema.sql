@@ -143,33 +143,37 @@ CREATE POLICY "org_update" ON organizations
   );
 
 -- POLICIES: Org members
+-- NOTE: Do NOT query org_members inside org_members policies (causes infinite recursion)
 
 CREATE POLICY "org_members_select" ON org_members
   FOR SELECT USING (
-    org_id IN (SELECT org_id FROM org_members WHERE user_id = auth.uid())
+    user_id = auth.uid()
+    OR org_id IN (SELECT id FROM organizations WHERE created_by = auth.uid())
   );
 
 CREATE POLICY "org_members_insert" ON org_members
   FOR INSERT WITH CHECK (
-    org_id IN (SELECT org_id FROM org_members WHERE user_id = auth.uid() AND role IN ('owner','admin'))
+    user_id = auth.uid()
+    OR org_id IN (SELECT id FROM organizations WHERE created_by = auth.uid())
   );
 
 CREATE POLICY "org_members_delete" ON org_members
   FOR DELETE USING (
-    org_id IN (SELECT org_id FROM org_members WHERE user_id = auth.uid() AND role = 'owner')
+    user_id = auth.uid()
+    OR org_id IN (SELECT id FROM organizations WHERE created_by = auth.uid())
   );
 
 -- POLICIES: Teams
 
 CREATE POLICY "teams_select" ON teams
   FOR SELECT USING (
-    org_id IN (SELECT org_id FROM org_members WHERE user_id = auth.uid())
+    org_id IN (SELECT id FROM organizations WHERE created_by = auth.uid())
     OR id IN (SELECT team_id FROM team_members WHERE user_id = auth.uid())
   );
 
 CREATE POLICY "teams_insert" ON teams
   FOR INSERT WITH CHECK (
-    org_id IN (SELECT org_id FROM org_members WHERE user_id = auth.uid() AND role IN ('owner','admin'))
+    org_id IN (SELECT id FROM organizations WHERE created_by = auth.uid())
   );
 
 CREATE POLICY "teams_update" ON teams
@@ -182,19 +186,19 @@ CREATE POLICY "teams_update" ON teams
 CREATE POLICY "tm_select" ON team_members
   FOR SELECT USING (
     team_id IN (SELECT team_id FROM team_members WHERE user_id = auth.uid())
-    OR team_id IN (SELECT id FROM teams WHERE org_id IN (SELECT org_id FROM org_members WHERE user_id = auth.uid() AND role IN ('owner','admin')))
+    OR team_id IN (SELECT id FROM teams WHERE created_by = auth.uid())
   );
 
 CREATE POLICY "tm_insert" ON team_members
   FOR INSERT WITH CHECK (
     team_id IN (SELECT team_id FROM team_members WHERE user_id = auth.uid() AND role = 'admin')
-    OR team_id IN (SELECT id FROM teams WHERE org_id IN (SELECT org_id FROM org_members WHERE user_id = auth.uid() AND role IN ('owner','admin')))
+    OR team_id IN (SELECT id FROM teams WHERE created_by = auth.uid())
   );
 
 CREATE POLICY "tm_delete" ON team_members
   FOR DELETE USING (
     team_id IN (SELECT team_id FROM team_members WHERE user_id = auth.uid() AND role = 'admin')
-    OR team_id IN (SELECT id FROM teams WHERE org_id IN (SELECT org_id FROM org_members WHERE user_id = auth.uid() AND role IN ('owner','admin')))
+    OR team_id IN (SELECT id FROM teams WHERE created_by = auth.uid())
   );
 
 -- POLICIES: Team invites
@@ -202,7 +206,7 @@ CREATE POLICY "tm_delete" ON team_members
 CREATE POLICY "ti_manage" ON team_invites
   FOR ALL USING (
     team_id IN (SELECT team_id FROM team_members WHERE user_id = auth.uid() AND role = 'admin')
-    OR team_id IN (SELECT id FROM teams WHERE org_id IN (SELECT org_id FROM org_members WHERE user_id = auth.uid() AND role IN ('owner','admin')))
+    OR team_id IN (SELECT id FROM teams WHERE created_by = auth.uid())
   );
 
 CREATE POLICY "ti_read" ON team_invites
