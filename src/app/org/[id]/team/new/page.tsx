@@ -38,6 +38,15 @@ export default function NewTeamPage() {
 
     const joinCode = Math.random().toString(36).substring(2, 8).toUpperCase();
 
+    // Guard: verify auth before any insert
+    const { data: { user: authUser } } = await supabase.auth.getUser();
+    if (!authUser) {
+      console.error("No active session found! RLS will block this insert.");
+      setError("Not logged in. Please sign in first.");
+      setCreating(false);
+      return;
+    }
+
     const { data: team, error: teamError } = await supabase
       .from("teams")
       .insert({

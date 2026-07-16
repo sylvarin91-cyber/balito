@@ -82,6 +82,14 @@ export default function OrgPage() {
 
     const joinCode = Math.random().toString(36).substring(2, 8).toUpperCase();
 
+    // Guard: verify auth before any insert
+    const { data: { user: authUser } } = await supabase.auth.getUser();
+    if (!authUser) {
+      console.error("No active session found! RLS will block this insert.");
+      setCreatingTeam(false);
+      return;
+    }
+
     const { data: team, error } = await supabase
       .from("teams")
       .insert({

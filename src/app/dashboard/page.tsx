@@ -159,6 +159,13 @@ export default function DashboardPage() {
   const handleStartShift = async () => {
     if (!selectedTeam) return;
 
+    // Guard: verify auth before any insert
+    const { data: { user: authUser } } = await supabase.auth.getUser();
+    if (!authUser) {
+      console.error("No active session found! RLS will block this insert.");
+      return;
+    }
+
     const { data: shift, error } = await supabase
       .from("shifts")
       .insert({

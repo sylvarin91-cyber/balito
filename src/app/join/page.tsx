@@ -35,6 +35,15 @@ export default function JoinPage() {
     setJoining(true);
     setError("");
 
+    // Guard: verify auth before any insert
+    const { data: { user: authUser } } = await supabase.auth.getUser();
+    if (!authUser) {
+      console.error("No active session found! RLS will block this insert.");
+      setError("Not logged in. Please sign in first.");
+      setJoining(false);
+      return;
+    }
+
     // Find team by join code
     const { data: team, error: teamError } = await supabase
       .from("teams")

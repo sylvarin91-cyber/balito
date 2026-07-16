@@ -132,6 +132,13 @@ export default function SchedulePage() {
     const schedule = schedules.find((s) => s.id === scheduleId);
     if (!schedule) return;
 
+    // Guard: verify auth before any insert
+    const { data: { user: authUser } } = await supabase.auth.getUser();
+    if (!authUser) {
+      console.error("No active session found! RLS will block this insert.");
+      return;
+    }
+
     const { error } = await supabase.from("shifts").insert({
       team_id: teamId,
       user_id: selectedMember,

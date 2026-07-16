@@ -67,6 +67,14 @@ export default function TeamMembersPage() {
     setInviting(true);
     setInviteResult(null);
 
+    // Guard: verify auth before any insert
+    const { data: { user: authUser } } = await supabase.auth.getUser();
+    if (!authUser) {
+      console.error("No active session found! RLS will block this insert.");
+      setInviting(false);
+      return;
+    }
+
     const code = Math.random().toString(36).substring(2, 10);
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
 

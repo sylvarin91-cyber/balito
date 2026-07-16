@@ -34,9 +34,10 @@ export default function NewOrgPage() {
     setCreating(true);
     setError("");
 
-    // Verify auth
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) {
+    // Guard: verify auth before any insert
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (!user) {
+      console.error("No active session found! RLS will block this insert.");
       setError("Not logged in. Please sign in first.");
       setCreating(false);
       return;

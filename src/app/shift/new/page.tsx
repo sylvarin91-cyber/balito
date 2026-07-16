@@ -29,6 +29,15 @@ export default function NewShiftPage() {
   const handleStartShift = async () => {
     setCreating(true);
 
+    // Guard: verify auth before any insert
+    const { data: { user: authUser } } = await supabase.auth.getUser();
+    if (!authUser) {
+      console.error("No active session found! RLS will block this insert.");
+      alert("Not logged in. Please sign in first.");
+      setCreating(false);
+      return;
+    }
+
     // Check if user has a team, if not create one
     const { data: memberRows } = await supabase
       .from("team_members")

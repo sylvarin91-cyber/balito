@@ -81,6 +81,14 @@ export default function ShiftPage() {
 
     setSaving(true);
 
+    // Guard: verify auth before any insert
+    const { data: { user: authUser } } = await supabase.auth.getUser();
+    if (!authUser) {
+      console.error("No active session found! RLS will block this insert.");
+      setSaving(false);
+      return;
+    }
+
     const { error } = await supabase.from("handovers").insert({
       shift_id: shiftId,
       content: newNote.trim(),

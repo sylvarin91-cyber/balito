@@ -69,6 +69,14 @@ export default function NewSchedulePage() {
 
     setSaving(true);
 
+    // Guard: verify auth before any insert
+    const { data: { user: authUser } } = await supabase.auth.getUser();
+    if (!authUser) {
+      console.error("No active session found! RLS will block this insert.");
+      setSaving(false);
+      return;
+    }
+
     const { error } = await supabase.from("shift_schedules").insert({
       team_id: teamId,
       shift_name: shiftName.trim(),

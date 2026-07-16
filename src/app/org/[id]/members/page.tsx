@@ -73,6 +73,14 @@ export default function OrgMembersPage() {
 
     setInviting(true);
 
+    // Guard: verify auth before any insert
+    const { data: { user: authUser } } = await supabase.auth.getUser();
+    if (!authUser) {
+      console.error("No active session found! RLS will block this insert.");
+      setInviting(false);
+      return;
+    }
+
     // For now, just add them as a member directly (in production, send invite email)
     // This is a simplified flow - the user would need to exist in auth already
     const { error } = await supabase
