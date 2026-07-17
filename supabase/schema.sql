@@ -1,48 +1,82 @@
--- Balito - Database Schema
--- Run this in Supabase SQL Editor
+-- Balito - Database Schema (Clean Rebuild)
+-- Run this in Supabase SQL Editor to drop and recreate all tables and policies cleanly.
 
 -- ============================================================
--- TABLES
+-- 1. CLEANUP (DROP Existing Objects in Order of Dependency)
 -- ============================================================
 
-create table organizations (
+drop trigger if exists on_auth_user_created on auth.users;
+drop function if exists public.handle_new_user cascade;
+drop function if exists public.is_org_member cascade;
+drop function if exists public.is_org_admin cascade;
+drop function if exists public.is_team_member cascade;
+drop function if exists public.is_team_admin cascade;
+drop function if exists public.is_shift_team_member cascade;
+
+drop table if exists public.handovers cascade;
+drop table if exists public.shifts cascade;
+drop table if exists public.shift_schedules cascade;
+drop table if exists public.team_invites cascade;
+drop table if exists public.team_members cascade;
+drop table if exists public.teams cascade;
+drop table if exists public.org_members cascade;
+drop table if exists public.organizations cascade;
+drop table if exists public.profiles cascade;
+
+-- ============================================================
+-- 2. TABLES
+-- ============================================================
+
+-- Profiles (exposes user emails to other authenticated users)
+create table public.profiles (
+  id uuid primary key references auth.users(id) on delete cascade,
+  email text not null,
+  created_at timestamptz default now()
+);
+
+-- Organizations
+create table public.organizations (
   id uuid primary key default gen_random_uuid(),
   name text not null,
-  parent_id uuid references organizations(id) on delete set null,
+  parent_id uuid references public.organizations(id) on delete set null,
   created_by uuid references auth.users(id) on delete set null,
   created_at timestamptz default now()
 );
 
-create table org_members (
+-- Organization Members
+create table public.org_members (
   id uuid primary key default gen_random_uuid(),
-  org_id uuid references organizations(id) on delete cascade,
+  org_id uuid references public.organizations(id) on delete cascade,
   user_id uuid references auth.users(id) on delete cascade,
   role text default 'member' check (role in ('owner', 'admin', 'member')),
   created_at timestamptz default now(),
   unique(org_id, user_id)
 );
 
-create table teams (
+-- Teams
+create table public.teams (
   id uuid primary key default gen_random_uuid(),
   name text not null,
-  org_id uuid references organizations(id) on delete set null,
+  org_id uuid references public.organizations(id) on delete set null,
   created_by uuid references auth.users(id) on delete set null,
   join_code text,
   created_at timestamptz default now()
 );
 
-create table team_members (
+-- Team Members
+create table public.team_members (
   id uuid primary key default gen_random_uuid(),
-  team_id uuid references teams(id) on delete cascade,
+  team_id uuid references public.teams(id) on delete cascade,
   user_id uuid references auth.users(id) on delete cascade,
   role text default 'member' check (role in ('admin', 'member')),
   created_at timestamptz default now(),
   unique(team_id, user_id)
 );
 
-create table team_invites (
+-- Team Invites
+create table public.team_invites (
   id uuid primary key default gen_random_uuid(),
-  team_id uuid references teams(id) on delete cascade,
+  team_id uuid references public.teams(id) on delete cascade,
   email text not null,
   invited_by uuid references auth.users(id) on delete set null,
   code text unique not null,
@@ -51,9 +85,10 @@ create table team_invites (
   created_at timestamptz default now()
 );
 
-create table shift_schedules (
+-- Shift Schedules
+create table public.shift_schedules (
   id uuid primary key default gen_random_uuid(),
-  team_id uuid references teams(id) on delete cascade,
+  team_id uuid references public.teams(id) on delete cascade,
   shift_name text not null,
   start_hour int not null,
   start_minute int not null default 0,
@@ -64,11 +99,12 @@ create table shift_schedules (
   created_at timestamptz default now()
 );
 
-create table shifts (
+-- Shifts
+create table public.shifts (
   id uuid primary key default gen_random_uuid(),
-  team_id uuid references teams(id) on delete cascade,
+  team_id uuid references public.teams(id) on delete cascade,
   user_id uuid references auth.users(id) on delete set null,
-  schedule_id uuid references shift_schedules(id) on delete set null,
+  schedule_id uuid references public.shift_schedules(id) on delete set null,
   started_at timestamptz default now(),
   ended_at timestamptz,
   status text default 'active' check (status in ('active', 'completed', 'scheduled')),
@@ -77,9 +113,10 @@ create table shifts (
   check (ended_at is null or ended_at > started_at)
 );
 
-create table handovers (
+-- Handovers
+create table public.handovers (
   id uuid primary key default gen_random_uuid(),
-  shift_id uuid references shifts(id) on delete cascade,
+  shift_id uuid references public.shifts(id) on delete cascade,
   content text not null,
   priority text default 'normal' check (priority in ('urgent', 'normal', 'resolved')),
   created_by uuid references auth.users(id) on delete set null,
@@ -87,144 +124,278 @@ create table handovers (
 );
 
 -- ============================================================
--- INDEXES
+-- 3. INDEXES
 -- ============================================================
 
-create index idx_org_members_user_id on org_members(user_id);
-create index idx_org_members_org_id on org_members(org_id);
-create index idx_teams_org_id on teams(org_id);
-create index idx_teams_join_code on teams(join_code);
-create index idx_team_members_user_id on team_members(user_id);
-create index idx_team_members_team_id on team_members(team_id);
-create index idx_shifts_team_id on shifts(team_id);
-create index idx_shifts_user_id on shifts(user_id);
-create index idx_shifts_status on shifts(status);
-create index idx_handovers_shift_id on handovers(shift_id);
+create index idx_org_members_user_id on public.org_members(user_id);
+create index idx_org_members_org_id on public.org_members(org_id);
+create index idx_teams_org_id on public.teams(org_id);
+create index idx_teams_join_code on public.teams(join_code);
+create index idx_team_members_user_id on public.team_members(user_id);
+create index idx_team_members_team_id on public.team_members(team_id);
+create index idx_shifts_team_id on public.shifts(team_id);
+create index idx_shifts_user_id on public.shifts(user_id);
+create index idx_shifts_status on public.shifts(status);
+create index idx_handovers_shift_id on public.handovers(shift_id);
 
 -- ============================================================
--- ENABLE RLS
+-- 4. SECURITY DEFINER HELPER FUNCTIONS (Prevents RLS Recursion)
 -- ============================================================
 
-alter table organizations enable row level security;
-alter table org_members enable row level security;
-alter table teams enable row level security;
-alter table team_members enable row level security;
-alter table team_invites enable row level security;
-alter table shift_schedules enable row level security;
-alter table shifts enable row level security;
-alter table handovers enable row level security;
+create or replace function public.is_org_member(org_uuid uuid, user_uuid uuid)
+returns boolean
+security definer
+stable
+language plpgsql
+as $$
+begin
+  return exists (
+    select 1 from public.org_members
+    where org_members.org_id = org_uuid
+      and org_members.user_id = user_uuid
+  );
+end;
+$$;
+
+create or replace function public.is_org_admin(org_uuid uuid, user_uuid uuid)
+returns boolean
+security definer
+stable
+language plpgsql
+as $$
+begin
+  return exists (
+    select 1 from public.org_members
+    where org_members.org_id = org_uuid
+      and org_members.user_id = user_uuid
+      and org_members.role in ('owner', 'admin')
+  );
+end;
+$$;
+
+create or replace function public.is_team_member(team_uuid uuid, user_uuid uuid)
+returns boolean
+security definer
+stable
+language plpgsql
+as $$
+begin
+  return exists (
+    select 1 from public.team_members
+    where team_members.team_id = team_uuid
+      and team_members.user_id = user_uuid
+  );
+end;
+$$;
+
+create or replace function public.is_team_admin(team_uuid uuid, user_uuid uuid)
+returns boolean
+security definer
+stable
+language plpgsql
+as $$
+begin
+  return exists (
+    select 1 from public.team_members
+    where team_members.team_id = team_uuid
+      and team_members.user_id = user_uuid
+      and team_members.role = 'admin'
+  );
+end;
+$$;
+
+create or replace function public.is_shift_team_member(shift_uuid uuid, user_uuid uuid)
+returns boolean
+security definer
+stable
+language plpgsql
+as $$
+declare
+  t_id uuid;
+begin
+  select team_id into t_id from public.shifts where id = shift_uuid;
+  if t_id is null then
+    return false;
+  end if;
+  return public.is_team_member(t_id, user_uuid);
+end;
+$$;
 
 -- ============================================================
--- RLS POLICIES
--- Rule: NEVER query a table from its own policy (causes infinite recursion)
+-- 5. TRIGGER FOR USER PROFILES
 -- ============================================================
+
+create or replace function public.handle_new_user()
+returns trigger
+security definer
+language plpgsql
+as $$
+begin
+  insert into public.profiles (id, email)
+  values (new.id, new.email);
+  return new;
+end;
+$$;
+
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute procedure public.handle_new_user();
+
+-- Backfill existing users (if any)
+insert into public.profiles (id, email)
+select id, email from auth.users
+on conflict (id) do nothing;
+
+-- ============================================================
+-- 6. ENABLE ROW LEVEL SECURITY
+-- ============================================================
+
+alter table public.profiles enable row level security;
+alter table public.organizations enable row level security;
+alter table public.org_members enable row level security;
+alter table public.teams enable row level security;
+alter table public.team_members enable row level security;
+alter table public.team_invites enable row level security;
+alter table public.shift_schedules enable row level security;
+alter table public.shifts enable row level security;
+alter table public.handovers enable row level security;
+
+-- ============================================================
+-- 7. RLS POLICIES
+-- ============================================================
+
+-- PROFILES
+create policy "profiles_select" on public.profiles
+  for select using (auth.uid() is not null);
 
 -- ORGANIZATIONS
-create policy "org_insert" on organizations
-  for insert with check (auth.uid() is not null);
+create policy "org_insert" on public.organizations
+  for insert with check (auth.uid() is not null and created_by = auth.uid());
 
-create policy "org_select" on organizations
+create policy "org_select" on public.organizations
   for select using (
-    id in (select org_id from org_members where user_id = auth.uid())
+    created_by = auth.uid()
+    or public.is_org_member(id, auth.uid())
+  );
+
+create policy "org_update" on public.organizations
+  for update using (
+    created_by = auth.uid()
+    or public.is_org_admin(id, auth.uid())
   );
 
 -- ORG_MEMBERS
--- Can see all members of orgs you created (queries organizations, not org_members)
-create policy "org_members_select" on org_members
+create policy "org_members_insert" on public.org_members
+  for insert with check (
+    -- Let users insert themselves during setup, or let org admins add members
+    user_id = auth.uid()
+    or public.is_org_admin(org_id, auth.uid())
+  );
+
+create policy "org_members_select" on public.org_members
   for select using (
     user_id = auth.uid()
-    or org_id in (select id from organizations where created_by = auth.uid())
+    or public.is_org_member(org_id, auth.uid())
   );
 
-create policy "org_members_insert" on org_members
-  for insert with check (user_id = auth.uid());
-
-create policy "org_members_delete" on org_members
-  for delete using (user_id = auth.uid());
+create policy "org_members_delete" on public.org_members
+  for delete using (
+    user_id = auth.uid()
+    or public.is_org_admin(org_id, auth.uid())
+  );
 
 -- TEAMS
-create policy "teams_select" on teams
-  for select using (
-    org_id in (select org_id from org_members where user_id = auth.uid())
-    or id in (select team_id from team_members where user_id = auth.uid())
-  );
-
-create policy "teams_insert" on teams
+create policy "teams_insert" on public.teams
   for insert with check (
-    org_id in (select org_id from org_members where user_id = auth.uid())
+    public.is_org_member(org_id, auth.uid())
   );
 
-create policy "teams_update" on teams
+create policy "teams_select" on public.teams
+  for select using (
+    public.is_org_member(org_id, auth.uid())
+    or public.is_team_member(id, auth.uid())
+    or join_code is not null  -- allows lookups by code
+  );
+
+create policy "teams_update" on public.teams
   for update using (
-    id in (select team_id from team_members where user_id = auth.uid() and role = 'admin')
+    public.is_team_admin(id, auth.uid())
   );
 
 -- TEAM_MEMBERS
--- Can see all members of teams you created (queries teams, not team_members)
-create policy "tm_select" on team_members
+create policy "tm_insert" on public.team_members
+  for insert with check (
+    user_id = auth.uid()
+    or public.is_team_admin(team_id, auth.uid())
+  );
+
+create policy "tm_select" on public.team_members
   for select using (
     user_id = auth.uid()
-    or team_id in (select id from teams where created_by = auth.uid())
+    or public.is_team_member(team_id, auth.uid())
   );
 
-create policy "tm_insert" on team_members
-  for insert with check (user_id = auth.uid());
-
-create policy "tm_delete" on team_members
-  for delete using (user_id = auth.uid());
+create policy "tm_delete" on public.team_members
+  for delete using (
+    user_id = auth.uid()
+    or public.is_team_admin(team_id, auth.uid())
+  );
 
 -- TEAM_INVITES
-create policy "ti_manage" on team_invites
+create policy "ti_manage" on public.team_invites
   for all using (
-    team_id in (select team_id from team_members where user_id = auth.uid() and role = 'admin')
+    public.is_team_admin(team_id, auth.uid())
   );
 
-create policy "ti_read" on team_invites
+create policy "ti_read" on public.team_invites
   for select using (true);
 
--- SHIFT_SCHEDULES
-create policy "ss_select" on shift_schedules
-  for select using (
-    team_id in (select team_id from team_members where user_id = auth.uid())
+create policy "ti_update_accept" on public.team_invites
+  for update using (
+    email = auth.jwt()->>'email'
+  ) with check (
+    email = auth.jwt()->>'email'
   );
 
-create policy "ss_manage" on shift_schedules
+-- SHIFT_SCHEDULES
+create policy "ss_select" on public.shift_schedules
+  for select using (
+    public.is_team_member(team_id, auth.uid())
+  );
+
+create policy "ss_manage" on public.shift_schedules
   for all using (
-    team_id in (select team_id from team_members where user_id = auth.uid() and role = 'admin')
+    public.is_team_admin(team_id, auth.uid())
   );
 
 -- SHIFTS
-create policy "shifts_select" on shifts
+create policy "shifts_select" on public.shifts
   for select using (
-    team_id in (select team_id from team_members where user_id = auth.uid())
+    public.is_team_member(team_id, auth.uid())
   );
 
-create policy "shifts_manage" on shifts
+create policy "shifts_manage" on public.shifts
   for all using (
-    team_id in (select team_id from team_members where user_id = auth.uid() and role = 'admin')
+    public.is_team_admin(team_id, auth.uid())
   );
 
-create policy "shifts_update_own" on shifts
-  for update using (user_id = auth.uid());
+create policy "shifts_update_own" on public.shifts
+  for update using (
+    user_id = auth.uid()
+  );
 
 -- HANDOVERS
-create policy "handovers_select" on handovers
+create policy "handovers_select" on public.handovers
   for select using (
-    shift_id in (select id from shifts where team_id in (
-      select team_id from team_members where user_id = auth.uid()
-    ))
+    public.is_shift_team_member(shift_id, auth.uid())
   );
 
-create policy "handovers_insert" on handovers
+create policy "handovers_insert" on public.handovers
   for insert with check (
-    shift_id in (select id from shifts where team_id in (
-      select team_id from team_members where user_id = auth.uid()
-    ))
+    public.is_shift_team_member(shift_id, auth.uid())
   );
 
-create policy "handovers_update" on handovers
+create policy "handovers_update" on public.handovers
   for update using (
-    shift_id in (select id from shifts where team_id in (
-      select team_id from team_members where user_id = auth.uid()
-    ))
+    public.is_shift_team_member(shift_id, auth.uid())
   );

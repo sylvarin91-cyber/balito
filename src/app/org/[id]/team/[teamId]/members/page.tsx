@@ -10,6 +10,7 @@ interface TeamMember {
   user_id: string;
   role: string;
   created_at: string;
+  user_email?: string;
 }
 
 export default function TeamMembersPage() {
@@ -25,6 +26,28 @@ export default function TeamMembersPage() {
   const params = useParams();
   const orgId = params.id as string;
   const teamId = params.teamId as string;
+
+  const fetchMembers = async () => {
+    const { data: membersData } = await supabase
+      .from("team_members")
+      .select("*")
+      .eq("team_id", teamId)
+      .order("created_at", { ascending: true });
+
+    if (!membersData || membersData.length === 0) return [];
+
+    const userIds = membersData.map((m) => m.user_id);
+    const { data: profilesData } = await supabase
+      .from("profiles")
+      .select("id, email")
+      .in("id", userIds);
+
+    const emailMap = new Map(profilesData?.map((p) => [p.id, p.email]) || []);
+    return membersData.map((m) => ({
+      ...m,
+      user_email: emailMap.get(m.user_id) || m.user_id,
+    }));
+  };
 
   useEffect(() => {
     const loadData = async () => {
@@ -47,13 +70,8 @@ export default function TeamMembersPage() {
       }
       setTeam(teamData);
 
-      const { data: membersData } = await supabase
-        .from("team_members")
-        .select("*")
-        .eq("team_id", teamId)
-        .order("created_at", { ascending: true });
-
-      setMembers(membersData || []);
+      const membersWithEmails = await fetchMembers();
+      setMembers(membersWithEmails);
       setLoading(false);
     };
 
@@ -75,7 +93,7 @@ export default function TeamMembersPage() {
       return;
     }
 
-    const code = Math.random().toString(36).substring(2, 10);
+    const code = Math.random().toString(36).substring(2, 10).toUpperCase();
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
 
     const { error } = await supabase.from("team_invites").insert({
@@ -222,7 +240,7 @@ export default function TeamMembersPage() {
                 className="flex items-center justify-between border border-slate-200 rounded-lg p-4"
               >
                 <div>
-                  <p className="font-medium text-slate-900">{member.user_id}</p>
+                  <p className="font-medium text-slate-900">{member.user_email || member.user_id}</p>
                   <p className="text-xs text-slate-500">
                     Joined {new Date(member.created_at).toLocaleDateString()}
                   </p>

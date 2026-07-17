@@ -25,6 +25,28 @@ export default function OrgMembersPage() {
   const params = useParams();
   const orgId = params.id as string;
 
+  const fetchMembers = async () => {
+    const { data: membersData } = await supabase
+      .from("org_members")
+      .select("*")
+      .eq("org_id", orgId)
+      .order("created_at", { ascending: true });
+
+    if (!membersData || membersData.length === 0) return [];
+
+    const userIds = membersData.map((m) => m.user_id);
+    const { data: profilesData } = await supabase
+      .from("profiles")
+      .select("id, email")
+      .in("id", userIds);
+
+    const emailMap = new Map(profilesData?.map((p) => [p.id, p.email]) || []);
+    return membersData.map((m) => ({
+      ...m,
+      user_email: emailMap.get(m.user_id) || m.user_id,
+    }));
+  };
+
   useEffect(() => {
     const loadData = async () => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -46,20 +68,7 @@ export default function OrgMembersPage() {
       }
       setOrg(orgData);
 
-      const { data: membersData } = await supabase
-        .from("org_members")
-        .select("*")
-        .eq("org_id", orgId)
-        .order("created_at", { ascending: true });
-
-      // Fetch emails for each member
-      const membersWithEmails = await Promise.all(
-        (membersData || []).map(async (m) => {
-          const { data } = await supabase.auth.admin.getUserById(m.user_id);
-          return { ...m, user_email: data?.user?.email || "Unknown" };
-        })
-      );
-
+      const membersWithEmails = await fetchMembers();
       setMembers(membersWithEmails);
       setLoading(false);
     };
@@ -93,11 +102,8 @@ export default function OrgMembersPage() {
     } else {
       setInviteEmail("");
       // Reload members
-      const { data } = await supabase
-        .from("org_members")
-        .select("*")
-        .eq("org_id", orgId);
-      setMembers(data || []);
+      const membersWithEmails = await fetchMembers();
+      setMembers(membersWithEmails);
     }
 
     setInviting(false);

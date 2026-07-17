@@ -44,14 +44,47 @@ export default function JoinPage() {
       return;
     }
 
-    // Find team by join code
-    const { data: team, error: teamError } = await supabase
+    // Find team by join code or invite code
+    let team = null;
+    let isInvite = false;
+    let inviteRecord = null;
+
+    // 1. Try querying teams by join code
+    const { data: teamByCode } = await supabase
       .from("teams")
       .select("*")
       .eq("join_code", joinCode.trim().toUpperCase())
-      .single();
+      .maybeSingle();
 
-    if (teamError || !team) {
+    if (teamByCode) {
+      team = teamByCode;
+    } else {
+      // 2. Try querying team_invites by invite code
+      const { data: invite } = await supabase
+        .from("team_invites")
+        .select("*, teams(*)")
+        .eq("code", joinCode.trim().toUpperCase())
+        .maybeSingle();
+
+      if (invite && invite.teams) {
+        // Verify expiry
+        if (new Date(invite.expires_at) < new Date()) {
+          setError("This invite has expired.");
+          setJoining(false);
+          return;
+        }
+        if (invite.accepted_at) {
+          setError("This invite has already been used.");
+          setJoining(false);
+          return;
+        }
+        team = invite.teams;
+        isInvite = true;
+        inviteRecord = invite;
+      }
+    }
+
+    if (!team) {
       setError("Invalid join code. Please check and try again.");
       setJoining(false);
       return;
@@ -63,7 +96,7 @@ export default function JoinPage() {
       .select("id")
       .eq("team_id", team.id)
       .eq("user_id", user.id)
-      .single();
+      .maybeSingle();
 
     if (existingMember) {
       setError("You're already a member of this team.");
@@ -90,13 +123,21 @@ export default function JoinPage() {
         .select("id")
         .eq("org_id", team.org_id)
         .eq("user_id", user.id)
-        .single();
+        .maybeSingle();
 
       if (!existingOrgMember) {
         await supabase
           .from("org_members")
           .insert({ org_id: team.org_id, user_id: user.id, role: "member" });
       }
+    }
+
+    // If it was an invite, mark it as accepted
+    if (isInvite && inviteRecord) {
+      await supabase
+        .from("team_invites")
+        .update({ accepted_at: new Date().toISOString() })
+        .eq("id", inviteRecord.id);
     }
 
     setSuccess(true);
