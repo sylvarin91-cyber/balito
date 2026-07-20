@@ -267,26 +267,36 @@ export default function DashboardPage() {
         </div>
 
         {/* Quick Actions */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
           <button
             onClick={handleStartShift}
-            className="bg-blue-600 text-white p-4 rounded-xl font-medium hover:bg-blue-700 transition-colors text-left"
+            className="bg-blue-600 text-white p-4 rounded-xl font-medium hover:bg-blue-700 transition-colors text-left shadow-sm"
           >
-            <div className="text-lg">Start Shift</div>
+            <div className="text-lg font-semibold">Start Shift</div>
             <div className="text-sm text-blue-200">Begin tracking now</div>
           </button>
           <Link
-            href={`/org/${selectedOrg?.id}/team/${selectedTeam?.id}/schedule`}
+            href={selectedOrg && selectedTeam ? `/org/${selectedOrg.id}/team/${selectedTeam.id}/board` : "#"}
+            className="bg-slate-900 text-white p-4 rounded-xl font-medium hover:bg-slate-800 transition-colors text-left shadow-sm border border-slate-800"
+          >
+            <div className="text-lg font-semibold flex items-center justify-between">
+              <span>Ops Kanban</span>
+              <span className="text-sm bg-blue-500/20 text-blue-300 border border-blue-500/30 px-2 py-0.5 rounded font-mono">Agile</span>
+            </div>
+            <div className="text-sm text-slate-400">Shift tasks & issues</div>
+          </Link>
+          <Link
+            href={selectedOrg && selectedTeam ? `/org/${selectedOrg.id}/team/${selectedTeam.id}/schedule` : "#"}
             className="bg-white border border-slate-200 p-4 rounded-xl font-medium hover:border-blue-300 transition-colors text-left"
           >
-            <div className="text-lg text-slate-900">View Schedule</div>
+            <div className="text-lg text-slate-900 font-semibold">View Schedule</div>
             <div className="text-sm text-slate-500">Weekly shift calendar</div>
           </Link>
           <Link
-            href={`/org/${selectedOrg?.id}/team/${selectedTeam?.id}/members`}
+            href={selectedOrg && selectedTeam ? `/org/${selectedOrg.id}/team/${selectedTeam.id}/members` : "#"}
             className="bg-white border border-slate-200 p-4 rounded-xl font-medium hover:border-blue-300 transition-colors text-left"
           >
-            <div className="text-lg text-slate-900">Team Members</div>
+            <div className="text-lg text-slate-900 font-semibold">Team Members</div>
             <div className="text-sm text-slate-500">Invite & manage</div>
           </Link>
         </div>

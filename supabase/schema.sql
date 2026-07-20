@@ -1,4 +1,4 @@
--- Balito - Database Schema (Clean Rebuild)
+-- Balito - Database Schema (Clean Rebuild with Shift Kanban & Tasks)
 -- Run this in Supabase SQL Editor to drop and recreate all tables and policies cleanly.
 
 -- ============================================================
@@ -13,6 +13,8 @@ drop function if exists public.is_team_member cascade;
 drop function if exists public.is_team_admin cascade;
 drop function if exists public.is_shift_team_member cascade;
 
+drop table if exists public.task_comments cascade;
+drop table if exists public.tasks cascade;
 drop table if exists public.handovers cascade;
 drop table if exists public.shifts cascade;
 drop table if exists public.shift_schedules cascade;
@@ -123,6 +125,31 @@ create table public.handovers (
   created_at timestamptz default now()
 );
 
+-- Tasks (Kanban / Operations Action Items)
+create table public.tasks (
+  id uuid primary key default gen_random_uuid(),
+  team_id uuid not null references public.teams(id) on delete cascade,
+  title text not null,
+  description text,
+  status text default 'todo' check (status in ('backlog', 'todo', 'in_progress', 'handover_pending', 'completed')),
+  priority text default 'normal' check (priority in ('low', 'normal', 'high', 'urgent')),
+  assigned_to uuid references auth.users(id) on delete set null,
+  target_shift_date date,
+  target_shift_name text,
+  created_by uuid references auth.users(id) on delete set null,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+-- Task Comments (Sub-notes & Discussion)
+create table public.task_comments (
+  id uuid primary key default gen_random_uuid(),
+  task_id uuid not null references public.tasks(id) on delete cascade,
+  user_id uuid references auth.users(id) on delete set null,
+  content text not null,
+  created_at timestamptz default now()
+);
+
 -- ============================================================
 -- 3. INDEXES
 -- ============================================================
@@ -137,6 +164,10 @@ create index idx_shifts_team_id on public.shifts(team_id);
 create index idx_shifts_user_id on public.shifts(user_id);
 create index idx_shifts_status on public.shifts(status);
 create index idx_handovers_shift_id on public.handovers(shift_id);
+create index idx_tasks_team_id on public.tasks(team_id);
+create index idx_tasks_status on public.tasks(status);
+create index idx_tasks_assigned_to on public.tasks(assigned_to);
+create index idx_task_comments_task_id on public.task_comments(task_id);
 
 -- ============================================================
 -- 4. SECURITY DEFINER HELPER FUNCTIONS (Prevents RLS Recursion)
@@ -221,6 +252,23 @@ begin
 end;
 $$;
 
+create or replace function public.is_task_team_member(task_uuid uuid, user_uuid uuid)
+returns boolean
+security definer
+stable
+language plpgsql
+as $$
+declare
+  t_id uuid;
+begin
+  select team_id into t_id from public.tasks where id = task_uuid;
+  if t_id is null then
+    return false;
+  end if;
+  return public.is_team_member(t_id, user_uuid);
+end;
+$$;
+
 -- ============================================================
 -- 5. TRIGGER FOR USER PROFILES
 -- ============================================================
@@ -259,6 +307,8 @@ alter table public.team_invites enable row level security;
 alter table public.shift_schedules enable row level security;
 alter table public.shifts enable row level security;
 alter table public.handovers enable row level security;
+alter table public.tasks enable row level security;
+alter table public.task_comments enable row level security;
 
 -- ============================================================
 -- 7. RLS POLICIES
@@ -287,7 +337,6 @@ create policy "org_update" on public.organizations
 -- ORG_MEMBERS
 create policy "org_members_insert" on public.org_members
   for insert with check (
-    -- Let users insert themselves during setup, or let org admins add members
     user_id = auth.uid()
     or public.is_org_admin(org_id, auth.uid())
   );
@@ -314,7 +363,7 @@ create policy "teams_select" on public.teams
   for select using (
     public.is_org_member(org_id, auth.uid())
     or public.is_team_member(id, auth.uid())
-    or join_code is not null  -- allows lookups by code
+    or join_code is not null
   );
 
 create policy "teams_update" on public.teams
@@ -398,4 +447,36 @@ create policy "handovers_insert" on public.handovers
 create policy "handovers_update" on public.handovers
   for update using (
     public.is_shift_team_member(shift_id, auth.uid())
+  );
+
+-- TASKS
+create policy "tasks_select" on public.tasks
+  for select using (
+    public.is_team_member(team_id, auth.uid())
+  );
+
+create policy "tasks_insert" on public.tasks
+  for insert with check (
+    public.is_team_member(team_id, auth.uid())
+  );
+
+create policy "tasks_update" on public.tasks
+  for update using (
+    public.is_team_member(team_id, auth.uid())
+  );
+
+create policy "tasks_delete" on public.tasks
+  for delete using (
+    public.is_team_member(team_id, auth.uid())
+  );
+
+-- TASK_COMMENTS
+create policy "task_comments_select" on public.task_comments
+  for select using (
+    public.is_task_team_member(task_id, auth.uid())
+  );
+
+create policy "task_comments_insert" on public.task_comments
+  for insert with check (
+    public.is_task_team_member(task_id, auth.uid())
   );

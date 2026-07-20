@@ -133,6 +133,31 @@ export default function ShiftPage() {
     }
   };
 
+  const handleConvertToTask = async (handover: Handover) => {
+    if (!shift?.team_id) return;
+    const taskPriority = handover.priority === "urgent" ? "urgent" : "normal";
+
+    const { data: newTask, error } = await supabase
+      .from("tasks")
+      .insert({
+        team_id: shift.team_id,
+        title: handover.content.slice(0, 80) + (handover.content.length > 80 ? "..." : ""),
+        description: `Created from shift handover note:\n"${handover.content}"\nShift: ${shift.shift_name || "Active Shift"}`,
+        status: "todo",
+        priority: taskPriority,
+        target_shift_name: shift.shift_name || null,
+        created_by: user.id,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      alert(`Failed to create task: ${error.message}`);
+    } else {
+      alert("Note successfully converted into a Kanban Task on the team board!");
+    }
+  };
+
   const handleMarkResolved = async (handoverId: string) => {
     const { error } = await supabase
       .from("handovers")
@@ -310,14 +335,23 @@ export default function ShiftPage() {
                         {new Date(handover.created_at).toLocaleString()}
                       </p>
                     </div>
-                    {handover.priority === "urgent" && shift?.status === "active" && (
+                    <div className="flex items-center gap-2">
                       <button
-                        onClick={() => handleMarkResolved(handover.id)}
-                        className="text-xs text-green-600 hover:text-green-700 font-medium"
+                        onClick={() => handleConvertToTask(handover)}
+                        title="Convert to Ops Kanban Task"
+                        className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 px-2.5 py-1 rounded font-medium transition-colors border border-slate-200 flex items-center gap-1"
                       >
-                        Mark Resolved
+                        <span>📋 Convert to Task</span>
                       </button>
-                    )}
+                      {handover.priority === "urgent" && shift?.status === "active" && (
+                        <button
+                          onClick={() => handleMarkResolved(handover.id)}
+                          className="text-xs text-green-600 hover:text-green-700 font-medium px-2 py-1"
+                        >
+                          Mark Resolved
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               ))}

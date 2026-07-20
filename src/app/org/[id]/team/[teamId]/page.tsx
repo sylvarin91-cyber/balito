@@ -142,7 +142,13 @@ export default function TeamPage() {
             <h1 className="text-2xl font-bold text-slate-900">{team?.name}</h1>
             <p className="text-slate-600">{members.length} members</p>
           </div>
-          <div className="flex gap-3">
+          <div className="flex gap-3 flex-wrap">
+            <Link
+              href={`/org/${orgId}/team/${teamId}/board`}
+              className="bg-slate-900 text-white px-4 py-2 rounded-lg font-medium hover:bg-slate-800 transition-colors flex items-center gap-2 shadow-sm"
+            >
+              <span>📋 Ops Kanban Board</span>
+            </Link>
             <Link
               href={`/org/${orgId}/team/${teamId}/members`}
               className="border border-slate-300 text-slate-700 px-4 py-2 rounded-lg font-medium hover:bg-slate-50 transition-colors"
