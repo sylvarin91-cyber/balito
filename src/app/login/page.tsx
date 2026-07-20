@@ -12,13 +12,37 @@ export default function LoginPage() {
   const [magicLinkSent, setMagicLinkSent] = useState(false);
   const supabase = createClient();
 
-  const handleMagicLink = async (e: React.FormEvent) => {
+  const handleEmailPassword = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!email.trim() || !password) return;
+
+    setLoading(true);
+    setError("");
+
+    const { error } = await supabase.auth.signInWithPassword({
+      email: email.trim(),
+      password,
+    });
+
+    if (error) {
+      setError(error.message);
+      setLoading(false);
+    } else {
+      window.location.href = "/dashboard";
+    }
+  };
+
+  const handleMagicLink = async () => {
+    if (!email.trim()) {
+      setError("Please enter your email address first.");
+      return;
+    }
+
     setLoading(true);
     setError("");
 
     const { error } = await supabase.auth.signInWithOtp({
-      email,
+      email: email.trim(),
       options: {
         emailRedirectTo: `${window.location.origin}/auth/callback?next=/dashboard`,
       },
@@ -28,24 +52,6 @@ export default function LoginPage() {
       setError(error.message);
     } else {
       setMagicLinkSent(true);
-    }
-    setLoading(false);
-  };
-
-  const handleEmailPassword = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setError("");
-
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-
-    if (error) {
-      setError(error.message);
-    } else {
-      window.location.href = "/dashboard";
     }
     setLoading(false);
   };
@@ -92,55 +98,57 @@ export default function LoginPage() {
           </div>
         )}
 
-        {/* Magic Link */}
-        <form onSubmit={handleMagicLink} className="mb-6">
-          <label className="block text-sm font-medium text-slate-700 mb-2">
-            Email address
-          </label>
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="you@company.com"
-            required
-            className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-          />
+        {/* Single standard Login Form for Autofill / Password Manager compatibility */}
+        <form onSubmit={handleEmailPassword} method="POST">
+          <div className="mb-4">
+            <label htmlFor="email" className="block text-sm font-medium text-slate-700 mb-2">
+              Email address
+            </label>
+            <input
+              id="email"
+              name="email"
+              type="email"
+              autoComplete="username email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@company.com"
+              required
+              className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+            />
+          </div>
+
+          <div className="mb-6">
+            <label htmlFor="password" className="block text-sm font-medium text-slate-700 mb-2">
+              Password
+            </label>
+            <input
+              id="password"
+              name="password"
+              type="password"
+              autoComplete="current-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="••••••••"
+              required
+              className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+            />
+          </div>
+
           <button
             type="submit"
             disabled={loading}
-            className="w-full mt-3 bg-blue-600 text-white py-3 rounded-lg font-medium hover:bg-blue-700 transition-colors disabled:opacity-50"
-          >
-            {loading ? "Sending..." : "Send Magic Link"}
-          </button>
-        </form>
-
-        <div className="relative mb-6">
-          <div className="absolute inset-0 flex items-center">
-            <div className="w-full border-t border-slate-200"></div>
-          </div>
-          <div className="relative flex justify-center text-sm">
-            <span className="bg-white px-4 text-slate-500">or</span>
-          </div>
-        </div>
-
-        {/* Email + Password */}
-        <form onSubmit={handleEmailPassword}>
-          <label className="block text-sm font-medium text-slate-700 mb-2">
-            Password
-          </label>
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="••••••••"
-            className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none mb-4"
-          />
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-slate-900 text-white py-3 rounded-lg font-medium hover:bg-slate-800 transition-colors disabled:opacity-50"
+            className="w-full bg-slate-900 text-white py-3 rounded-lg font-medium hover:bg-slate-800 transition-colors disabled:opacity-50 mb-3"
           >
             {loading ? "Signing in..." : "Sign in with Password"}
+          </button>
+
+          <button
+            type="button"
+            onClick={handleMagicLink}
+            disabled={loading}
+            className="w-full bg-slate-100 text-slate-700 py-3 rounded-lg font-medium hover:bg-slate-200 transition-colors border border-slate-200 disabled:opacity-50 text-sm"
+          >
+            {loading ? "Sending..." : "✨ Send Magic Link Instead"}
           </button>
         </form>
 
